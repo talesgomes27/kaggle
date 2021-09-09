@@ -1,0 +1,91 @@
+---
+title: "Focos de calor no Brasil"
+output: 
+  flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(DT)
+library(geobr)
+
+
+# load and clean data
+site <- "http://homolog-dados.mma.gov.br/pt_BR/dataset/ffd9ab35-5719-4ec1-8d13-ae8f738bebc2/resource/949310f1-05bc-4f56-a63f-aef67aac6164/download/rf_incendiosflorestais_focoscalor_estados_1998-2017.csv"
+dados <- data.table::fread(site,
+                          quote="", encoding = 'Latin-1', check.names = TRUE)
+estados <- read_state()
+
+
+estados <- estados |>  
+  mutate(
+    name_state = factor(janitor::make_clean_names(name_state, case = "title", unique_sep = ".")),
+    name_state = str_replace(name_state,"\\..*",""))
+
+
+dados <- dados |> 
+  select(-Período.) |> 
+  rename(ANO = X.Ano,
+         ESTADO = Estado,
+         MES = Mês,
+         foco_incendio = Número,
+         ) |> 
+  mutate(
+    ANO = str_remove(ANO,"\""),
+    ANO = as.factor(ANO),
+    foco_incendio = as.integer(foco_incendio),
+    ESTADO = factor(janitor::make_clean_names(ESTADO, case = "title", unique_sep = ".")),
+    ESTADO = str_replace(ESTADO,"\\..*","")
+    ) |> 
+  right_join(estados, by = c("ESTADO" = "name_state")) |> 
+  select(-c(geom, code_region, code_state, abbrev_state))
+# and load and clean data
+```
+
+
+```{r, include=FALSE}
+startData <- dados
+GBChoices <- as.list(names(startData))
+names(GBChoices) <- paste(names(startData),map(startData,~length(unique(.x))))
+
+updateData <- reactive(
+  startData %>% group_by(!!! rlang::syms(input$GB)) %>% summarise_if(is.numeric,sum,na.rm=T))
+```
+
+Column {.sidebar}
+------------------------------------------------------------------
+```{r}
+selectInput(inputId = "GB",label = "Group By",choices = GBChoices)
+selectInput(inputId = "Metric",label = "Metric",choices = names(select_if(startData,is.numeric)))
+```
+
+Column 
+------------------------------------------------------------------
+
+### Plot
+```{r}
+renderPlot({
+ updateData() %>% 
+  ggplot(aes(x=!! rlang::sym(input$GB),y=!! rlang::sym(input$Metric),fill=!! rlang::sym(input$GB))) +
+  geom_col()+
+    coord_flip()+
+    theme(
+      legend.position = "none"
+
+    )
+})
+```
+
+
+### Table 
+```{r}
+renderDT(
+  updateData(), rownames = F, extensions = 'Buttons', filter="top", editable=T,
+  options = list(
+    dom = 'Blfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    lengthMenu = list(c(10,50,100,-1),c(10,50,100,"All"))
+  )
+)
+```
