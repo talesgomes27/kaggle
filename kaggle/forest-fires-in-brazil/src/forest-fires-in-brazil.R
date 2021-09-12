@@ -35,9 +35,9 @@ theme_map <- function(...) {
       panel.grid.minor = element_line(color = "#ebebe5", size = 0.2),
       panel.grid.major = element_line(color = "#ebebe5", size = 0.2),
       #panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = "#f5f5f2", color = NA), 
-      panel.background = element_rect(fill = "#f5f5f2", color = NA), 
-      legend.background = element_rect(fill = "#f5f5f2", color = NA),
+      plot.background = element_rect(fill = "#F9F7F7", color = NA), 
+      panel.background = element_rect(fill = "#F9F7F7", color = NA), 
+      legend.background = element_rect(fill = "#F9F7F7", color = NA),
       panel.border = element_blank(),
       ...
     )
@@ -56,9 +56,9 @@ theme_ggplot <- function(...) {
       panel.grid.minor = element_line(color = "#ebebe5", size = 0.2),
       panel.grid.major = element_line(color = "#ebebe5", size = 0.2),
       #panel.grid.minor = element_blank(),
-      plot.background = element_rect(fill = "#f5f5f2", color = NA), 
-      panel.background = element_rect(fill = "#f5f5f2", color = NA), 
-      legend.background = element_rect(fill = "#f5f5f2", color = NA),
+      plot.background = element_rect(fill = "#F9F7F7", color = NA), 
+      panel.background = element_rect(fill = "#F9F7F7", color = NA), 
+      legend.background = element_rect(fill = "#F9F7F7", color = NA),
       panel.border = element_blank(),
       ...
     )
@@ -100,18 +100,19 @@ dados <- dados |>
     )
 
 
-glimpse(dados)
-
-#Salvando os dados limpos em uma planilha .csv
-#write.csv2(dados, file = "fire_number.csv")
-
-
 #tratando o objeto "estados" do pacote  "geobr" para que a coluna "name_state"
 #corresponda com a coluna "UF" do "dados".
 estados <- estados |>  
   mutate(
     name_state = factor(janitor::make_clean_names(name_state, case = "title", unique_sep = ".")),
     name_state = str_replace(name_state,"\\..*",""))
+
+
+
+glimpse(dados)
+
+#Salvando os dados limpos em uma planilha .csv
+#write.csv2(dados, file = "fire_number.csv")
 
 
 
@@ -149,7 +150,7 @@ glimpse(foco_calor_ano)
 
   
 #gráfico de barras
-# Com intuito de mostar quais os estados com maior numero de focos de incêndio.
+# Com intuito de mostrar quais os estados com maior numero de focos de incêndio.
 foco_calor_ano |> 
   ggplot(aes(N_calor, reorder(UF, -N_calor))) +
   geom_col(aes(color = name_region, fill = name_region), width = 0.8)+
@@ -164,7 +165,6 @@ foco_calor_ano |>
     fill = "Região do país"
   )+
   theme_ggplot()
-
 
 
 
