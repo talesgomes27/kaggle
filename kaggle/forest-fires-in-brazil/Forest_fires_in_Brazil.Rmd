@@ -533,6 +533,6 @@ plotly::ggplotly(plot8, width = 900, height = 600)
 
 ## Conclusão
 
-Neste projeto trabalhamos om dados oficiais do governo brasileiro sobre queimadas do ano de 1998 a 2017. Foi possível realizar gráficos interativos, para isso utilizamos os pacotes geobr, sf e plotly. Podemos ver que a partir de uma base de dados tratada ([Tidy data](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html)) fomos capazes de extrair as informações necessárias dos dados. Como atividade complementar a este projeto confeccionei no Tableau uma Dashboard que pode ser acessada [aqui](https://public.tableau.com/app/profile/tales.gomes/viz/FocosdeincndiosnoBrasil1998a2017/FocosdeincndionoBrasil).
+Neste projeto trabalhamos com dados oficiais do governo brasileiro sobre queimadas do ano de 1998 a 2017. Foi possível realizar gráficos interativos, para isso utilizamos os pacotes geobr, sf e plotly. Podemos ver que a partir de uma base de dados tratada ([Tidy data](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html)) fomos capazes de extrair as informações necessárias dos dados. Como atividade complementar a este projeto confeccionei no Tableau uma Dashboard que pode ser acessada [aqui](https://public.tableau.com/app/profile/tales.gomes/viz/FocosdeincndiosnoBrasil1998a2017/FocosdeincndionoBrasil).
 
 
