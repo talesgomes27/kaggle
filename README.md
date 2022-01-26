@@ -14,5 +14,5 @@ The goal of kaggle is to archive all my kaggle projects
 
 -   the source can be found
     [here](https://www.kaggle.com/gustavomodelli/forest-fires-in-brazil).
--   my project can be found
-    [here](https://talesgomes27.github.io/kaggle/kaggle/forest-fires-in-brazil/Forest_fires_in_Brazil.html).
+    -   my project can be found
+        [here](https://talesgomes27.github.io/kaggle/kaggle/forest-fires-in-brazil/Forest_fires_in_Brazil.html).

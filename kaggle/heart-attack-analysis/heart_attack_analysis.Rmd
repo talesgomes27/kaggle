@@ -1,0 +1,456 @@
+---
+title: "Heart attack dataset modeling analysis"
+author: "Tales Gomes"
+date: "25/01/2022"
+output: 
+  html_document:
+    code_folding: show
+    toc: TRUE
+    toc_float: TRUE
+    theme:
+      bg: "#dff1ff"
+      fg: "#000000"
+      primary: "#0055cc"
+      secondary: "#0a75ad"
+      base_font:
+        google: Prompt
+      heading_font:
+        google: Proza Libre
+
+---
+
+```{r setup, include=FALSE}
+if (requireNamespace("thematic")) 
+  thematic::thematic_rmd(font = "auto")
+
+knitr::opts_chunk$set(echo = TRUE,
+                      out.width = "100%"
+                      )
+
+library(tidyverse) # metapackage of all tidyverse packages
+library(ggpubr)
+library(vtreat)
+library(pROC)
+library(e1071)       #SVM fucntion for classification
+library(caret)
+```
+
+
+## About this dataset
+
+* Age: Age of the patient
+* Sex: Sex of the patient
+* exng: exercise induced angina (1 = yes; 0 = no)
+* ca: number of major vessels (0-3)
+* cp: Chest Pain type
+  * Value 1: typical angina
+  * Value 2: atypical angina
+  * Value 3: non-anginal pain
+  * Value 4: asymptomatic
+* trtbps: resting blood pressure (in mm Hg)
+* chol: cholestoral in mg/dl fetched via BMI sensor
+* fbs: (fasting blood sugar > 120 mg/dl) (1 = true; 0 = false)
+* rest_ecg: resting electrocardiographic results
+  * Value 0: normal
+  * Value 1: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of > 0.05 mV)
+  * Value 2: showing probable or definite left ventricular hypertrophy by Estes' criteria
+* thalach: maximum heart rate achieved
+* target: 0= less chance of heart attack 1= more chance of heart attack
+
+
+## Importing the data
+
+The Data can be aquired in the [kaggle site](https://www.kaggle.com/rashikrahmanpritom/heart-attack-analysis-prediction-dataset).
+
+
+```{r}
+
+heart_df <- read_csv("heart.csv")
+
+```
+
+### fisrt look in the data
+
+Now that we hav the data loaded we can use glimpse to see it.
+
+```{r}
+
+glimpse(heart_df)
+
+
+```
+
+## Data Manipulation
+
+  Wen can see that R imported all the data as numeric, but as we know that some variable are categorical variable. Than to facilitate the manipulation wen can store in two variables that information.
+
+```{r}
+
+#categorical variables
+factor_vars <- c("sex", "cp", "fbs",
+                 "restecg", "exng",
+                 "exng","slp", "caa",
+                 "thall", "output")
+
+#numeric variables
+numeric_vars <- c("age", "trtbps", "chol",
+                  "thalachh", "oldpeak" )
+
+```
+
+First thing wen can do is to verify if that is some NAs in the data.
+
+```{r}
+
+apply(heart_df, 2, function(x){sum(is.na(x))})
+
+```
+
+Now that we saw that wen don't have NAs, wen can convert the catorical vriable to factos. 
+
+```{r}
+
+
+heart_data <- heart_df %>%
+    #Transforming categorical variable to factors
+    mutate_at(factor_vars, as_factor) %>%  
+    # Reordering the columns to better visualizate the data
+    relocate(where(is.numeric), .before = where(is.factor)) #%>% 
+
+```
+
+Now we can see how tha dataset is with glimpse.
+
+```{r}
+
+glimpse(heart_data)
+
+```
+
+### Manipuling the numerical variable
+
+first we can calculate the mean and standart variable of the data to see the need to scale the data.
+
+```{r}
+
+summary(heart_data[, numeric_vars])
+
+```
+
+```{r}
+
+apply(heart_data[, numeric_vars], 2, sd)
+
+```
+
+Now let's shoe the data distribution 
+
+```{r}
+
+#Setting ggplot theme
+theme_set(theme_pubr())
+
+#Function to Plot the histogram
+plot_histogram <- function(data, col){
+  ggplot(data, aes_string(col)) +
+    geom_histogram(bins=15) +
+    ggtitle(col)
+}
+
+
+# Creating the histogram of the numeric variable
+plot1 <- plot_histogram(heart_data, numeric_vars[1])
+plot2 <- plot_histogram(heart_data, numeric_vars[2])
+plot3 <- plot_histogram(heart_data, numeric_vars[3])
+plot4 <- plot_histogram(heart_data, numeric_vars[4])
+plot5 <- plot_histogram(heart_data, numeric_vars[5])
+
+
+#merging the plot in one space
+figure <- ggarrange(plot1, plot2, plot3, plot4, plot5,
+                    ncol = 2, nrow = 3)
+figure
+
+```
+
+As we can see some variables are on different scales and so we will perform the normalization of the data.
+
+```{r}
+
+# #scale
+# heart_data <- heart_data %>%
+#     mutate_if(is.numeric, ~(scale(.) %>% as.vector))
+
+
+
+#Normalise function
+normalize <- function(x){((x-min(x)) /(max(x)-min(x)))}
+
+
+heart_data <- heart_data %>%
+    mutate_if(is.numeric, ~(normalize(.) %>% as.vector))
+
+
+```
+
+one last verification if we don't introduced some NAs in the data
+
+```{r}
+
+#Verify if has NA
+apply(heart_data, 2, function(x){sum(is.na(x))})
+
+```
+
+Before starting to model the data, we have to verify that it is balanced.
+
+
+```{r}
+
+# Se the difference in numbers of cases with 0 and 1
+heart_data %>%
+count(output)
+
+#Verify the percentage of case of heart attack 
+mean(heart_data$output == 1)
+
+```
+
+
+## Data modeling
+
+### Base Model
+
+Now our data is balanced, propor maked as numerical and categorical and normalized. So we can train our first model. As a base model we will use the logistic model with all the variable of the data set.
+
+#### Split the data
+
+First wen will separate the data in train and test. For tha we used dplyr
+
+```{r}
+
+set.seed(7325)   # set seed to ensure you always have same random numbers generated
+
+heart_data <- heart_data %>% mutate(id = row_number())
+
+
+# We seareted the data in 70% traning and 20% test
+#Create training set
+training_set <- heart_data %>% slice_sample(prop = .80)
+#Create test set
+test_set  <- anti_join(heart_data, training_set, by = 'id')
+
+# Drping the id column
+training_set <- training_set %>%
+  select(-id)
+# Drping the id column
+test_set <- test_set %>%
+  select(-id)
+# Drping the id column
+heart_data <- heart_data %>%
+   select(-id)
+
+```
+
+
+#### Traning the model
+
+```{r}
+base_model <- glm(output ~ ., data = training_set, family = binomial)
+
+summary(base_model)
+```
+
+#### Predicting and Accuracy
+
+After training the model we can do the predictions
+
+```{r warning=FALSE}
+#variable to store predictions across all models
+predictions <- 0
+
+# Predicting the base model
+predictions$base_prob <- predict(base_model, test_set, type = "response")
+
+# Predict a heart attack if probability of output is greater than average
+predictions$base_pred <- ifelse(predictions$base_prob > 0.5, 1, 0)
+```
+
+Lets see how good is the model based on the predictions
+
+```{r}
+
+# Calculate the total model's accuracy
+print("Accuracy total model")
+mean(predictions$base_pred  == test_set$output)
+
+```
+
+At the first version of our model we achieved a 85% of Accuracy. Now lets see the confusion matrix.
+
+```{r}
+
+
+
+#Confusion matrix total model
+print("Confusion matrix full model")
+caret::confusionMatrix(table(predictions$base_pred , test_set$output))
+
+
+```
+Let's plot the Roc courve of the model
+
+```{r, fig.showtext = TRUE}
+
+# Create a ROC curve
+ROC <- roc(test_set$output, predictions$base_prob)
+
+# Plot the ROC curve
+plot(ROC, col = "blue")
+
+# Calculate the area under the curve (AUC)
+auc(ROC)
+
+```
+
+At the end of the first modeling round we achieved a model with 85% of accuracy and an AUC of 0.9329. 
+
+
+### Stepwise and cross-fold modeling
+
+In this dataset we have a big problem, the data is small and for that reason we decide to procede a [k-fold cross-validation](https://en.wikipedia.org/wiki/Cross-validation_(statistics)) of our model and on top of that we will proced a [stepwise modeling](https://www.statology.org/stepwise-regression-r/).
+
+
+First we produce the k-folders. On this problem we will work with 5 folders.
+
+```{r}
+
+# Get the number of rows in heart_data
+nRows <- nrow(heart_data)
+# Implement the 3-fold cross-fold plan with vtreat
+splitPlan <- kWayCrossValidation(nRows, 5, NULL, NULL)
+# Examine the split plan
+str(splitPlan)
+
+```
+
+Now we will train out model for each folder and for last traing a model with the whole data set.
+
+```{r echo=T, warning=FALSE, results='hide'}
+
+# Run the 5-fold cross validation plan from splitPlan
+prediction_coss_model <- 0
+k <- 5 # Number of folds
+predictions$prob.cv <- 0 
+
+
+
+# Tranning the k-folder stepwise stepmodel
+for(i in 1:k) {
+  split <- splitPlan[[i]]
+  
+  #creating a null model for each folder  
+  cross_null_model <- glm(output ~ 1, data = heart_data[split$train, ], family = binomial)
+  #creating a full model for each folder
+  cross_full_model <- glm(output ~ ., data = heart_data[split$train, ], family = binomial)
+  #creating a stepwise model for each folder
+  cross_step_model <- step(cross_null_model,
+                           scope = list(lower = cross_null_model,
+                                        upper = cross_full_model),
+                           direction = "both")
+  
+  
+  #Storing the probability for each folder
+  predictions$prob.cv[split$app] <- predict(cross_step_model, newdata = ,heart_data[split$app, ],  type = "response")
+  # Making prediction for each folder
+  predictions$pred.cv[split$app] <- ifelse(predictions$prob.cv[split$app] > 0.5, 1, 0)
+  # Calculating the accuracy for each folder of our model
+  prediction_coss_model[i] <- mean(predictions$pred.cv[split$app]  == heart_data[split$app, ]$output)
+  
+}
+
+# Now Lets model with the whole data. 
+# Creating a null model (stepwise model)
+null_model <- glm(output ~ 1, data = heart_data, family = binomial)
+# Creating a Full model
+full_model <- glm(output ~ ., data = heart_data, family = binomial)
+# Creating our Stepwise model
+step_model <- step(null_model, scope = list(lower = null_model, upper = full_model), direction = "both")
+```
+
+Now we can see our final stepwise model
+
+```{r}
+
+#Summary of the final model
+summary(step_model)
+
+```
+#### Prediction and Accurary
+
+First we will make predictions for our stepwise model 
+
+```{r}
+
+# Calculating the probability of each output
+predictions$step_prob <- predict(step_model, type = "response")
+# Predict a heart attack if probability of output is greater than average
+predictions$step_pred <- ifelse(predictions$step_prob > 0.5, 1, 0)
+
+```
+
+
+and now we can compare the Accuracy of the stepwise model with the mean accuracy of the 5 folders we produced. 
+
+
+```{r}
+
+#Calculate the model's  partition accuracy
+#mean(predictions$heart_pred.cv  == heart_data$output)
+
+#Mean accuracy's prediction of the cross validation model 5 folders
+print("Mean accuracy k-folder cross validation model")
+mean(prediction_coss_model)
+
+
+
+# Calculate the total model's accuracy
+print("Accuracy stepwise model")
+mean(predictions$step_pred  == heart_data$output)
+
+
+```
+
+As we can see we produce a model with 89% accuracy a good improvement from the base model. Now lets plot the confusion matrix.
+
+```{r}
+
+#Confusion matrix cross validation model
+print("Confusion matrix cross validation model")
+table(predictions$pred.cv, heart_data$output)
+
+#Confusion matrix total model
+print("Confusion matrix total model")
+caret::confusionMatrix(table(predictions$step_pred, heart_data$output))
+
+```
+
+And last the Roc curve of the stepwise model.
+
+```{r, fig.showtext = TRUE}
+
+
+# Create a ROC curve
+ROC <- roc(heart_data$output, predictions$step_prob)
+
+# Plot the ROC curve
+plot(ROC, col = "blue")
+
+# Calculate the area under the curve (AUC)
+auc(ROC)
+
+```
+
+
+In the end with k-folder cross validation and stepwise modeling we produced a model with 89% accuracy and AUC of 0.9419.A good improvement from our base model.
+

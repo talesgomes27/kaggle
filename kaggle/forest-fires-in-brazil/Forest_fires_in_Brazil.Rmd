@@ -163,7 +163,7 @@ fire_data_broad <- fire_data_base |>
   with_groups(
     c(name_state, fire_year, fire_month),
     summarise,
-    fire_number = sum(fire_number),
+      fire_number = sum(fire_number),
     fire_month = ordered(
       fire_month,
       levels = c(
@@ -232,7 +232,7 @@ plot1 <- ggplot(data = data_plot1, mapping = aes(fire_number, name_state)) +
 
 plotly::ggplotly(plot1, width = 900, height = 600)
 
-    ```
+```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 plot2 <- data_plot1 |>
