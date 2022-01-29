@@ -8,10 +8,13 @@ output:
     toc: TRUE
     toc_float: TRUE
     theme:
-      bg: "#dff1ff"
-      fg: "#000000"
-      primary: "#0055cc"
-      secondary: "#0a75ad"
+      #version: 5
+      #https://bootswatch.com/
+      bootswatch: "cosmo"
+      # bg: "#dff1ff"
+      # fg: "#000000"
+      # primary: "#0055cc"
+      # secondary: "#0a75ad"
       base_font:
         google: Prompt
       heading_font:
