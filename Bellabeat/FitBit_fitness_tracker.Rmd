@@ -1,0 +1,520 @@
+---
+title: "FitBit fitness tracker"
+author: "Tales Gomes"
+date: "02/09/2021"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.path = "figures/",
+                      out.width= "80%",
+                      fig.align = "center"
+                      )
+```
+
+```{r Carregamento dados, message=FALSE, warning=FALSE, include=FALSE}
+
+# Carregamento bibliotecas ------------------------------------------------
+
+library(tidyverse)
+library(patchwork)
+
+# Tratamento dos Dados diários --------------------------------------------------------------
+
+#Lendo o arquivos com dados diários e gravando em variáveis.
+#No processo está sendo limpo os nomes das variáveis para remoção de espaços e
+#letras maiúsculas. Bem como alterando o tipo da coluna que contem as datas
+#de todas as tabelas diárias
+
+#Lendo dados de "dailyActivity_merged.csv" e limpando os nomes das variáveis
+daily_activity <- "bellabeat_data/dailyActivity_merged.csv" |> 
+  data.table::fread(sep = ',') |> 
+  janitor::clean_names()
+#transformando a coluna de "activity_date" de string para o tipo data.
+#alterando o nome da coluna "activity_date" para "date"
+daily_activity <- daily_activity |> 
+  mutate(activity_date = lubridate::mdy(activity_date),
+         date = lubridate::date(activity_date)) |> 
+  select(-activity_date)
+
+
+#Lendo dados de "sleepDay_merged.csv" e limpando os nomes das variáveis
+daily_sleep <- "bellabeat_data/sleepDay_merged.csv" |> 
+  data.table::fread(sep = ',') |>
+  janitor::clean_names()
+#transformando a coluna de "sleep_day" de string para o tipo data.
+#alterando o nome da coluna "sleep_day" para "date"
+daily_sleep <- daily_sleep |> 
+  mutate(sleep_day = lubridate::mdy_hms(sleep_day),
+         date = lubridate::date(sleep_day)) |> 
+  select(-sleep_day)
+
+
+#Lendo dados de "heartrate_seconds_merged.csv" e limpando os nomes das variáveis
+heartrate <- "bellabeat_data/heartrate_seconds_merged.csv" |> 
+  data.table::fread(sep = ',') |>
+  janitor::clean_names()
+#transformando a coluna de "time" de string para o tipo data.
+#alterando o nome da coluna "time" para "date"
+heartrate <- heartrate |> 
+  mutate(time = lubridate::mdy_hms(time),
+         date = lubridate::date(time)) |>
+  select(-time) |> 
+  with_groups(c(id, date), summarise, heartrate = mean(value))
+#Na linha acima é feita a transformação dos valores
+#em segundos para valores diários
+
+
+#Lendo dados de "heartrate_seconds_merged.csv" e limpando os nomes das variáveis
+weight_log <- "bellabeat_data/weightLogInfo_merged.csv" |> 
+  data.table::fread(sep = ',') |>
+  janitor::clean_names()
+#transformando a coluna de "date" de string para o tipo data.
+weight_log <- weight_log |> 
+  mutate(date = lubridate::mdy_hms(date),
+         date = lubridate::date(date))
+
+```
+
+## Objetivo da análise
+
+Este projeto tem como objetivo encontrar tendências de uso dos usuários para assim ajudar a melhorar o comportamento do *Bellabeat* (Aplicativo do medidor de saúde da Bellabeat).
+
+## Preparação e processamento dos dados
+
+### Descrição dos dados
+
+Será utilizado o banco de dados do fitibit do [kaggle](https://www.kaggle.com/arashnic/fitbit), o qual é composto por 18 planilhas contendo dados de atividades, passos, calorias, sono e batimento cardíaco de uma lista de usuários que consentiram em compartilhas as informações. O banco de dados está sob a licença [CC0: Public Domain](https://creativecommons.org/publicdomain/zero/1.0/). Sendo que para esta tarefa especifica foi escolhido trabalhar com dados diários fornecidos pelos usuários, sendo utilizadas seguintes as tabelas:
+
+-   *"dailyActivity_merged"* que contém dados de atividades diárias, como distância percorrida, passos, calorias gastas, tempo sedentário e de atividades leves, moderadas ou avançadas;
+
+-   *"sleepDay_merged"* que contém informações de quantidade de sono, tempo na deitado cama e número de eventos de sono;
+
+-   *"heartrate_seconds_merged"* que contém o registro dos batimentos cardíacos dos usuários por segundo;
+
+-   *"weightLogInfo_merged"* que contém informações sobre peso, índice de massa corporal e percentual de gordura corporal.
+
+### Descrição da processo de limpeza dos dados
+
+Para desempenhar esta análise foi escolhido a linguagem de programação [R](https://www.r-project.org/) e para o tratamento de dados foram seguidos os seguintes passos:
+
+-   Todas as tabelas foram carregadas no plataforma;
+
+-   Em cada tabela a coluna responsável pelo armazenamento da data do registro foi alterada do tipo string para o tipo data, tendo seus nomes alterados para "date" afim de facilitar a manipulação dos dados;
+
+-   Na tabela *"heartrate_seconds_merged"* foi alterada a escala temporal de segundos para diário e calculado a média de batimentos cardíacos por dia;
+
+-   Foi feita a união das tabelas através de uma *left-join* entre a tabela *"dailyActivity_merged"* e as outras 3 tabelas;
+
+-   Todas as planilhas de tempo foram alteradas de minutos para horas;
+
+-   A coluna que contém o ID dos usuários foi alterada para algo mais legível, foi escolhido o prefixo "U" seguido por um numeral. Como por exemplo "U1" para usuário 1;
+
+-   A ordem das colunas foi alterada para que colunas correlacionadas fiquem adjacente uma a outra;
+
+-   O resultado foi salvo na numa variável e numa planilha *Excel* chamadas *"daily_data"*.
+
+```{r Limpeza dados, message=FALSE, warning=FALSE, echo=TRUE}
+
+
+daily_data <- reduce(list(daily_activity,
+                          heartrate,
+                          daily_sleep,
+                          weight_log
+                          ),
+                     left_join,
+                     by = c("id", "date")) |> 
+  mutate(id = as.factor(id),
+         day_of_the_week = lubridate::wday(date,
+                                           label = TRUE),
+         total_time_asleep = total_minutes_asleep/60,
+         total_time_in_bed = total_time_in_bed/60,
+         sedentary_time = sedentary_minutes/60,
+         lightly_active_time = lightly_active_minutes/60,
+         fairly_active_time = fairly_active_minutes/60,
+         very_active_time = very_active_minutes/60,
+         id = fct_relabel(id, ~ paste0('U', 1:33))
+         ) |>
+  select(-c(total_minutes_asleep, sedentary_minutes, lightly_active_minutes,
+            fairly_active_minutes, very_active_minutes, log_id,
+            is_manual_report, weight_pounds, fat, logged_activities_distance)) |> 
+  relocate(where(is.numeric), .after = last_col())
+
+
+```
+
+## Análise e visualização
+
+### Resumo dos dados
+
+A tabela resultante pode ser encontrada a seguir:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+rmarkdown::paged_table(daily_data)
+
+```
+
+### Sumário dos dados
+
+```{r}
+
+daily_data |>
+  skimr::skim()
+
+```
+
+Através do pacote *skimr* podemos gerar um relatório detalhado das variáveis da tabela resultante. Feito isso, podemos observar o seguinte:
+
+-   a distância ativa média diária é de 5,5 km diários;
+
+-   a média de passos diários é de 7652 passos por dia;
+
+-   usuários queimam em média 2308 calorias por dia;
+
+-   a média de frequência cardíaca é de 78 batimentos;
+
+-   a média do índice de massa corporal é de 25,2;
+
+-   usuários dormem em média, aproximadamente, 7 hora por dia;
+
+-   o tempo médio de sedentário dos usuários é de 16,5 horas.
+
+Com os dados extraídos acima observamos que o tempo sedentário entre os usuários é alto e por mais que a média de sono dos usuários seja de 7 horas, os valores variam muito entre o valor mínimo de 1 hora e máximo de 13,3 horas diárias. Podemos analisar mais afundo e ver se há alguma variação entre esses achados com a queima de caloria, índice de massa corporal e outras variáveis.
+
+```{r Dia da semana Vs Distancia e calorias}
+
+
+daily_data_long <- daily_data |>
+  select(
+    id,
+    date,
+    day_of_the_week,
+    light_active_distance,
+    sedentary_active_distance,
+    moderately_active_distance,
+    very_active_distance
+  ) |>
+  pivot_longer(
+    !c(id, date, day_of_the_week),
+    names_to = "activities_type",
+    values_to = "activities_dist"
+  ) |>
+  mutate(
+    activities_type = as.ordered(activities_type),
+    activities_type = fct_recode(
+      activities_type,
+      Sedentário = "sedentary_active_distance",
+      Leve = "light_active_distance",
+      Moderada = "moderately_active_distance",
+      Intensa = "very_active_distance"
+    ),
+    activities_type  = fct_relevel(
+      activities_type,
+      "Sedentário",
+      "Leve"
+    )
+  )
+
+
+daily_data_long <- daily_data |>
+  select(
+    id,
+    date,
+    calories,
+    heartrate,
+    weight_kg,
+    bmi,
+    total_steps,
+    day_of_the_week,
+    sedentary_time,
+    lightly_active_time,
+    fairly_active_time,
+    very_active_time
+    
+  ) |>
+  pivot_longer(
+    !c(id, date, day_of_the_week, calories, heartrate, weight_kg, bmi, total_steps),
+    names_to = "activities_type",
+    values_to = "activities_time"
+  ) |>
+  mutate(
+    activities_type = as.ordered(activities_type),
+    activities_type = fct_recode(
+      activities_type,
+      Sedentário = "sedentary_time",
+      Leve = "lightly_active_time",
+      Moderada = "fairly_active_time",
+      Intensa = "very_active_time"
+    ),
+    activities_type  = fct_relevel(
+      activities_type,
+      "Sedentário",
+      "Leve"
+    )
+  ) |> 
+  right_join(daily_data_long, by = c("id" = "id",
+                          "date" = "date",
+                          "day_of_the_week" = "day_of_the_week",
+                          "activities_type" = "activities_type"
+                          )
+            )
+
+
+
+
+```
+
+Primeiramente realizamos a comparação entre a distância ativa percorrida e tempo por tipo de atividade, ambos em relação ao dia da semana. Podemos observar que os dias mais ativos são terça, quarta e quinta. Bem como que por mais que atividades leves, moderadas e intensas sejam a menor parte do dia, são responsáveis por virtualmente 100% do tempo ativo dos usuários.
+
+```{r PLot Dia da semana Vs Distancia e calorias}
+
+plot1 <- ggplot(daily_data_long) +
+  geom_col(aes(x = day_of_the_week, y = activities_dist,
+               color = activities_type, fill = activities_type))+
+  labs(
+    x = "Dia da semana",
+    y = "Distância total (km)",
+  )
+
+plot2 <-  ggplot(daily_data_long) +
+  geom_col(aes(x = day_of_the_week, y = activities_time,
+               color = activities_type, fill = activities_type))+
+  labs(
+    x = "Dia da semana",
+    y = "Tempo (h)",
+  )
+
+
+patchwork1 <- plot1 + plot2 + plot_layout(guides='collect') & scale_color_viridis_d(aes(label = "Atividade")) &
+scale_fill_viridis_d(aes(label = "Atividade")) &
+ggpubr::theme_pubclean() &
+theme(legend.position='bottom')
+
+patchwork1 + plot_annotation(
+  title = "Distância ativa percorrida e Tempo ativo por dia da semana",
+  subtitle = "Extratificado pela intensidade da atividade",
+  caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+)
+
+```
+
+No gráfico abaixo temos a relação entre a distância ativa percorrida e o tempo por atividade. Conseguimos confirmar que por mais que o usuários passem muito tempo sedentários esse tempo não contribui na distância ativa percorrida por dia, também podemos observar que a relação entre distância ativa e tempo de atividade vai crescendo com a intensidade da atividade.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot3 <- daily_data_long |> 
+  ggplot() +
+  geom_point(aes(x = activities_time, y = activities_dist,
+                 color = activities_type, fill = activities_type))+
+  geom_smooth(aes(x = activities_time, y = activities_dist), method = "lm")+
+  scale_color_viridis_d(aes(label = "Atividade")) +
+  scale_fill_viridis_d(aes(label = "Atividade")) +
+  ggpubr::theme_pubclean() +
+  facet_wrap(vars(activities_type))+
+  labs(
+    x = "Tempo (h)",
+    y = "Distância total (km)",
+    title = "Distândia ativa por atividade em relação ao total de calorias gastas",
+    subtitle = "Extratificado pela intensidade da atividade",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='bottom')
+
+plot3
+
+```
+
+Abaixo temos a relação entre tempo da atividade em relação a queima de calorias diárias. verificamos que há uma relação inversa entre o tempo sedentário e a queima de calorias, em contrapartida queima de calorias tem uma relação positiva com a intensidade da atividade.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot4 <- ggplot(daily_data_long) +
+  geom_point(aes(x = activities_time, y =calories,
+                 color = activities_type, fill = activities_type))+
+  geom_smooth(aes(x = activities_time, y = calories), method = "lm")+
+  scale_color_viridis_d(aes(label = "Atividade")) +
+  scale_fill_viridis_d(aes(label = "Atividade")) +
+  ggpubr::theme_pubclean() +
+  facet_wrap(vars(activities_type))+
+  labs(
+    x = "Tempo (h)",
+    y = "Total de calorias",
+    title = "Tempo por atividade em relação ao total de calorias gastas",
+    subtitle = "Extratificado pela intensidade da atividade",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='bottom')
+
+plot4
+
+
+
+```
+
+Da mesma forma há uma relação negativa com o tempo sedentário e a quantidade de passos diários totais entre os usuários e uma relação positiva entre a intensidade da atividade com a quantidade de passos diários. Em média, quanto mais sedentário um usuário permanece, menos calorias são gastas e passos são dados durante o dia.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot5 <- daily_data_long |> 
+  ggplot() +
+  geom_point(aes(x = activities_time, y = total_steps,
+                 color = activities_type, fill = activities_type))+
+  geom_smooth(aes(x = activities_time, y = total_steps), method = "lm")+
+  scale_color_viridis_d(aes(label = "Atividade")) +
+  scale_fill_viridis_d(aes(label = "Atividade")) +
+  ggpubr::theme_pubclean() +
+  facet_wrap(vars(activities_type))+
+  labs(
+    x = "Tempo (h)",
+    y = "Total de passos diários",
+    title = "Tempo por atividade em relação ao total de passos diários",
+    subtitle = "Extratificado pela intensidade da atividade",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='bottom')
+
+plot5
+
+
+
+```
+
+```{r Dia da semana Vs Tempo e calorias, include=FALSE}
+
+sleep_data <- daily_data |>
+  select(
+    id,
+    date,
+    total_distance,
+    total_steps,
+    calories,
+    heartrate,
+    weight_kg,
+    bmi,
+    total_time_asleep,
+    total_time_in_bed
+  ) |>
+  #drop_na() |> 
+  with_groups(
+    c(id, date),
+    mutate,
+    total_time_in_bed = (total_time_in_bed - total_time_asleep),
+    range_sleep = case_when(
+      total_time_asleep < 6 ~ "Menos de 6 horas",
+      total_time_asleep >= 6 &
+        total_time_asleep <= 10 ~ "Entre 6 e 10 horas",
+      total_time_asleep > 10 ~ "Mais de 10 horas"
+    ),
+    range_sleep = factor(range_sleep),
+    range_sleep = fct_relevel(range_sleep,
+                              "Menos de 6 horas",
+                              "Entre 6 e 10 horas",
+                              "Mais de 10 horas"
+                              )
+  )
+
+```
+
+Analisando a relação do quantidade de horas dormidas e os passos diários observamos que usuários que dormem menos de 6 horas diários tendem a queimar menos calorias que usuários dormem de 6 a 10 horas por dia. Observamos também que a relação entre queima de calorias e passos diários não é tão forte entre os usuários que dormem mais de 10 horas diárias, contudo isso pode se dar pela baixa quantidade de usuários nessa faixa de sono o que requer dados adicionais para chegarmos a uma conclusão dessa faixa de usuários. Com os dados disponíveis podemos ver que a relação anterior entre passos diários e queima de calorias é quebrado, fazendo que mesmo que os usuários sejam ativo durante o dia a queima de caloria é diminuída em relação as usuários que tem ua boa relação com as hora de sono.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+plot6 <- sleep_data |> 
+  select(-c(heartrate, weight_kg, bmi)) |> 
+  drop_na() |> 
+  ggplot() +
+  geom_point(aes(x = total_steps, y = calories,
+                 color = range_sleep, fill = range_sleep))+
+  geom_smooth(aes(x = total_steps, y = calories), method = "lm")+
+  scale_color_viridis_d(aes(label = "Duração do sono")) +
+  scale_fill_viridis_d(aes(label = "Duração do sono")) +
+  ggpubr::theme_pubclean() +
+  facet_wrap(vars(range_sleep))+
+  labs(
+    x = "Total de passos",
+    y = "Total de calorias",
+    title = "Total de passos diários vs total de calorias gastas",
+    subtitle = "Extratificado pelo quantidade de horas dormidas",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='none')
+
+plot6
+
+
+
+```
+
+Fazendo um paralelo entre as duração do sono e o média de batimentos cardíacos vemos que usuários que dormem menos de 6 horas diárias tendem a ter uma média batimentos cardíacos mais elevados do que usuários de dormem de 6 à 10 horas diárias. Uma boa noite de sono, ao que indicam os dados podem ajudar a evitar possível doenças cardíacas em pessoas com pré disposição a isso.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+sleep_data |>
+  select(-c(weight_kg, bmi)) |> 
+  drop_na() |>
+  group_by(date, range_sleep) |> 
+  summarise(heartrate = mean(heartrate)) |> 
+  ggplot() +
+  geom_boxplot(aes(y = heartrate, color = range_sleep))+
+  scale_x_continuous(labels = NULL, breaks = NULL)+
+  scale_color_viridis_d(aes(label = "Frequência cardíaca média"))+
+  facet_wrap(vars(range_sleep)) +
+  ggpubr::theme_pubclean() +
+  labs(
+    y = "Frequência cardiáca",
+    title = "Média da frequência cardiaca em relação as horas dormidas diárias",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='none')
+  
+
+
+```
+
+Comparando a média de horas dormidas com o índice de massa corporal médio vemos que usuários que dormem menos de 6 horas tem na média um percentual masa corporal maior que usuários que dormem entre 6 e 10 horas por dia.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+sleep_data |>
+  drop_na() |>
+  group_by(date, range_sleep) |> 
+  summarise(bmi = mean(bmi)) |> 
+  ggplot() +
+  geom_boxplot(aes(y = bmi, color = range_sleep))+
+  scale_x_continuous(labels = NULL, breaks = NULL)+
+  scale_color_viridis_d(aes(label = "Indice de massa corporal"))+
+  ggpubr::theme_pubclean() +
+  facet_wrap(vars(range_sleep)) +
+  labs(
+    y = "Índice de massa corporal",
+    title = "Média do índice massa corporal em relação as horas dormidas diárias",
+    caption = "Período analisado de 12/04/2016 à 12/05/2016\n
+    Fonte: kaggle"
+  ) +
+  theme(legend.position='none')
+  
+
+
+```
+
+## Resumos do análise
+
+Analisando os dados encontramos as seguintes relações:
+
+-   quanto mais tempo um usuário permanece sedentário menos passos/calorias esse usuário percorre/gasta durante o dia;
+
+-   a relação entre passos diários, bem como calorias gastas, e o tempo da atividade é positiva e essa relação tende a aumentar com a intensidade da atividade;
+
+-   usuários que dormem menos de 6 horas por dia tentem a gastar, em média, menos calorias por dia;
+
+-   usuários que dormem menos de 6 horas tendem a ter a frequência cardíaca e o índice de massa corporal maior que usuários que dormem de 6 a 10 horas por dia.

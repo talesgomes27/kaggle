@@ -1,0 +1,538 @@
+---
+title: "Forest_fires_in_Brazil"
+author: "Tales Gomes"
+date: "11/09/2021"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+    self_contained: TRUE
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  error = FALSE,
+  warning = FALSE,
+  out.width = "100%",
+  fig.align = "center",
+  dpi = 400
+  )
+```
+
+## Projeto
+
+Neste exercício irei trabalhar com o banco de dados do kaggle [Forest Fires in Brazil](https://www.kaggle.com/gustavomodelli/forest-fires-in-brazil) que comporta o número de focos de incêndios em florestas brasileiras do ano de 1998 até 2017, os dados foram obtidos a partir do [site oficial](https://dados.gov.br/dataset/sistema-nacional-de-informacoes-florestais-snif) do governo brasileiro.
+
+## Objetivo
+
+Neste exercício o ejetivo é encontrar padrões nos dados, além de treinar visualizações com mapas utilizando o pacote [sf](https://r-spatial.github.io/sf/) em conjunto com o pacote [geobr](https://ipeagit.github.io/geobr/index.html), ambos da biblioteca [R](https://www.r-project.org/about.html). 
+Para me guiar neste trabalho irei realizar alguns questionamentos básicos, que espero poder responder no decorrer do exercício. São eles:
+
+1.  Qual o Estado e região brasileira com mais focos de incêndios em florestas?
+
+2.  Qual o Estado e região com menos focos?
+
+3.  Na região norte qual o estado com mais focos de incêndios?
+
+4.  No estado do Pará qual o mês com mais focos de incêndios na média?
+
+5.  No ano de 2010, qual foi o estado com mais focos de incêndios no Brasil?
+
+6.  No ano de 2010, qual o mês com menos focos de incêndios no estado do Pará?
+
+
+## Preparação
+
+```{r include=FALSE}
+# Carregando bibliotecas --------------------------------------------------
+# Dados encontrados em
+# https://dados.gov.br/dataset/sistema-nacional-de-informacoes-florestais-snif/resource/39308794-da81-4cab-89e7-1691c2f3893b
+#Projeto kaggle referência.
+# https://www.kaggle.com/gustavomodelli/forest-fires-in-brazil
+library(tidyverse)
+library(sf)
+library(geobr)
+library(reactable)
+
+
+# Obtendo os dados --------------------------------------------------------
+states <- read_state()
+regions <- read_region()
+```
+
+
+```{r include=FALSE}
+# Antes de tudo definirei os temas que serão utilizados para os gráfico gerados nesse projeto.
+
+# Tema para os gráficos ------------------------------------------------------
+theme_set(
+  ggthemes::theme_base() +
+      theme(
+        text = element_text(family = "Ubuntu Regular", color = "#22211d"),
+        axis.line = element_blank(),
+        axis.text.x = element_text(family = "Ubuntu Regular", color = "#22211d"),
+        axis.text.y = element_text(family = "Ubuntu Regular", color = "#22211d"),
+        axis.ticks = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.minor = element_line(color = "#ebebe5", size = 0.2),
+        panel.grid.major = element_line(color = "#ebebe5", size = 0.2),
+        #panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = "#F9F7F7", color = NA),
+        panel.background = element_rect(fill = "#F9F7F7", color = NA),
+        legend.background = element_rect(fill = "#F9F7F7", color = NA),
+        panel.border = element_blank()
+      )
+)
+
+
+
+```
+
+
+### Aquisição dos dados
+
+  O banco de dados é composto por uma planilha com 5 colunas e 6454 linhas que contém o número de incẽndios, bem como o estados, mês e ano que esses incêndios ocorreram. Abaixo podemos ver a tabela após o tratamento inicial.
+
+```{r include=FALSE}
+
+site <- "http://dados.agricultura.gov.br/dataset/420c0514-92da-4888-be85-290a0785e8a9/resource/f192c841-b95f-4e6e-9a32-70db6838e6f1/download/rfincendiosflorestaisfocoscalorestados1998-2017.csv"
+
+
+fire_data_base <- data.table::fread(site,
+                           quote="\"", sep = "\t", encoding = 'Latin-1', check.names = TRUE)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+reactable(fire_data_base , paginationType = "jump", columns = list(
+  X.Ano = colDef(
+    cell = function(value) {
+      htmltools::tags$b(value)
+    }
+  )
+))
+
+```
+
+### Tratamento dos dados
+
+Além dos dados dos incêndios precisamos também precisamos das coordenadas geográficas para podermos visualizar os mapas, aqui foi utilizado o pacote [geobr](https://ipeagit.github.io/geobr/index.html) que possui as coordenadas do território brasileiro (Pais, regiões, estados e municípios) em um formato pronto para trabalhar com o pacote [sf](https://r-spatial.github.io/sf/), o que facilitou bastante. Neste trabalho utilizei o banco de dados contendo as informações dos estados e outro contendo as informações das regiões. Único tratamento que precisei fazer as tabelas provenientes do pacote geobr foi alterar a coluna que contém o nome dos estados para coincidir com a tabela dos dados.
+
+O processo de tratamento é descrito a seguir:
+
+-   Há duas formas de trabalhar com datas aqui, a primeira é utilizar a coluna "Período." que contém informações completas de mês e ano. A segunda forma é utilizar as colunas "X.Ano" e "Mês" que possuem as mesmas informações. Para simplificar as coisas irei trabalhar com as colunas "X.Ano" e "Mês" e por isso o primeiro passo da limpeza é excluir a coluna "Período." (Fica de exercício fazer o oposto e tratar a coluna "Período." com o pacote [*lubridate*](https://lubridate.tidyverse.org/) do tidyverse para extrair o mês e o ano).
+
+-   Segundo passo é renomear minhas colunas para melhor gerais, retirar acentos e formatar a nomeação das variáveis.
+
+-   Após retirei da primeira e ultima coluna as aspas e mudei o tipo das variáveis para melhor trabalhar com os dados;
+
+-   Por último afim de poder trabalhar com o pacote sf precisei realizar a união da tabela contendo as coordenadas geográficas e a tabela contendo o número de incêndios, contudo algumas operações de que precisaremos realizar posteriormente ficariam muito lentas se o fizéssemos com os dados contendo a coluna de coordenadas, então após a união foi necessário retirar tal coluna. A execução do código fica bem mais rápida se realizarmos a inclusão da coluna geográfica somente no momento que realizarmos o *plot* do gráfico. Abaixo temos o código:
+
+```{r}
+#tratando o objeto "states" do pacote  "geobr" para que a coluna "name_state"
+#corresponda com a coluna "name_state" do "fire_data_base".
+states <- states |>  
+  mutate(
+    name_state = factor(janitor::make_clean_names(name_state, case = "title", unique_sep = ".")),
+    name_state = str_replace(name_state,"\\..*",""))
+
+
+
+# Renomeando as variáveis, removendo as aspas e convertendo formatos.
+fire_data_broad <- fire_data_base |>
+  select(-Período.) |>
+  rename(
+    fire_year = X.Ano,
+    name_state = Estado,
+    fire_month = Mês,
+    fire_number = Número,
+  ) |>
+  mutate(
+    fire_year = str_remove(fire_year, "\""),
+    fire_year = as.double(fire_year),
+    fire_number = as.integer(fire_number),
+    name_state = factor(
+      janitor::make_clean_names(name_state, case = "title", unique_sep = ".")
+    ),
+    name_state = str_replace(name_state, "\\..*", "")
+  ) |>
+  with_groups(
+    c(name_state, fire_year, fire_month),
+    summarise,
+      fire_number = sum(fire_number),
+    fire_month = ordered(
+      fire_month,
+      levels = c(
+        "Janeiro", "Fevereiro", "Março",
+        "Abril", "Maio", "Junho", "Julho",
+        "Agosto", "Setembro","Outubro",
+        "Novembro", "Dezembro"
+      )
+    )
+  ) |>
+  unique() |>
+  right_join(states,
+             by = c("name_state")) |>
+  mutate(name_state = name_state) |>
+  select(c(fire_year, fire_month, fire_number, name_state, name_region))
+
+```
+
+Abaixo a tabela resultante:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+reactable(fire_data_broad, paginationType = "jump", filterable = TRUE,
+          columns = list(
+            fire_year = colDef(
+              cell = function(value) {
+                htmltools::tags$b(value)
+                }
+              )
+            )
+          )
+
+```
+
+
+## Análise
+
+Depois de tratar os dados podemos enfim responder as perguntas iniciais.
+
+1.  Quais Estados brasileiro com mais e menos focos de incêndios em florestas?
+
+
+Podemos observar que o estado com mais foco de incêndio no período do estudo é o estado de São Paulo com 51118 focos, enquanto o estado com menos focos é Sergipe com 3237 focos de incêndios.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+data_plot1 <- fire_data_broad |> 
+  with_groups(c(name_state, name_region) , summarise, fire_number = sum(fire_number)) |>
+  mutate(name_state = reorder(name_state, -fire_number)) |> 
+  unique() 
+
+plot1 <- ggplot(data = data_plot1, mapping = aes(fire_number, name_state)) +
+  geom_col(aes(color = name_region, fill = name_region), width = 0.8)+
+  scale_color_viridis_d()+
+  scale_fill_viridis_d()+
+  labs(
+    title = "Quantidade de focos de incêndios no Brasil de 1998 a 2017",
+    y = "states",
+    x = "Número de focos de incêndios",
+    color = "Região do país",
+    fill = "Região do país"
+  )+
+  theme(
+    legend.position = c(0.86, 0.86)
+  )
+
+
+plotly::ggplotly(plot1, width = 900, height = 600)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot2 <- data_plot1 |>
+  left_join(states, by = ("name_state")) |> 
+  st_as_sf() |> 
+  ggplot() +
+  geom_sf(data = states) +
+  geom_sf(mapping = aes(fill = fire_number), color = "black", show.legend = TRUE) + 
+  #caso queira a sigla de cada estado, descomente a proxima linha
+  geom_sf_text(mapping = aes(label = abbrev_state), colour = "black")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  #facet_wrap("fire_year")+ # Caso queira separar por fire_year descomentar essa linha
+  labs(title = "Quantidade de focos de incêndios no Brasil de 1998 a 2017",
+       fill ="Focos de incêndios")+
+  theme(
+    axis.text.x = element_blank(),
+    legend.position = c(0.86, 0.16),
+    axis.text.y = element_blank()
+  )
+
+plotly::ggplotly(plot2, width = 900, height = 600)
+```
+
+
+2.  Quais regiões brasileiras com mais e com menos focos?
+
+A região com mais focos de incêndios é o Nordeste com 192.584 focos e a região com menos focos é a região Sul com 88.035 focos de incêndios. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+data_plot34 <- fire_data_broad |>
+  with_groups(c(name_region) , summarise, fire_number = sum(fire_number)) |>
+  mutate(name_region = reorder(name_region, fire_number))
+
+plot3 <-  ggplot(data = data_plot34, aes(name_region,fire_number)) +
+  geom_col(aes(color = fire_number, fill = fire_number))+
+  scale_color_gradient(low = "yellow", high = "red")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  labs(
+    title = "Quantidade de focos de incêndios de 1998 à 2017 por região",
+    y = "states",
+    x = "Número de focos de incêndios"
+  )+
+  theme(
+    legend.position = "none"
+  )
+
+plotly::ggplotly(plot3, width = 900, height = 600)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plot4 <- data_plot34 |> 
+  left_join(regions, by = ("name_region")) |> 
+  st_as_sf() |> 
+  ggplot() +
+  geom_sf(data = states) +
+  geom_sf(aes(fill = fire_number), color = "black", show.legend = TRUE) + 
+  #caso queira a sigla de cada estado, descomente a proxima linha
+  geom_sf_text(mapping = aes(label = name_region), colour = "black")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  #facet_wrap("fire_year")+ # Caso queira separar por fire_year descomentar essa linha
+  labs(title = "Quantidade de focos de incêndios de 1998 à 2017 por região",
+       fill ="Focos de incêndios")+
+  theme(
+    axis.text.x = element_blank(),
+    legend.position = c(0.86, 0.16),
+    axis.text.y = element_blank()
+  )
+
+plotly::ggplotly(plot4, width = 900, height = 600)
+
+```
+
+
+3.  Na região norte qual o estado com mais focos de incêndios?
+
+Na região norte podemos observar do gráfico que o estado com mais focos de incêndios é o Tocantins com 33.675 ficis de incêndios.
+
+```{r include=FALSE}
+
+data_plot3 <- fire_data_broad |> 
+  with_groups(c(name_state, name_region) , summarise, fire_number = sum(fire_number)) |>
+  mutate(name_state = reorder(name_state, -fire_number)) |> 
+  unique() |> 
+  filter(name_region == "Norte")
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot5 <- ggplot(data = data_plot3, mapping = aes(fire_number, name_state)) +
+  geom_col(aes(color = fire_number, fill = fire_number), width = 0.8)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  labs(
+    title = "Quantidade de focos de incêndios na região Norte de 1998 à 2017",
+    subtitle = "de 1998 a 2017",
+    y = "states",
+    x = "Número de focos de incêndios",
+    color = "Focos de incêndios",
+    fill = "Focos de incêndios"
+  )+
+  theme(
+    legend.position = c(0.86, 0.86)
+  )+
+  theme(
+    legend.position = "none"
+  )
+
+
+plotly::ggplotly(plot5, width = 900, height = 600)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+norte <- states |> 
+  filter(name_region == "Norte")
+
+plot6 <- data_plot3 |>
+  left_join(states, by = ("name_state")) |> 
+  st_as_sf() |> 
+  ggplot() +
+  geom_sf(data = norte) +
+  geom_sf(mapping = aes(fill = fire_number), color = "black", show.legend = TRUE) + 
+  #caso queira a sigla de cada estado, descomente a proxima linha
+  geom_sf_text(mapping = aes(label = abbrev_state), colour = "black")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  #facet_wrap("fire_year")+ # Caso queira separar por fire_year descomentar essa linha
+  labs(title = "Quantidade de focos de incêndios na região Norte de 1998 à 2017",
+       fill ="Focos de incêndios")+
+  theme(
+    axis.text.x = element_blank(),
+    legend.position = c(0.86, 0.16),
+    axis.text.y = element_blank()
+  )
+
+plotly::ggplotly(plot6, width = 900, height = 600)
+
+
+```
+
+
+4.  No estado do Pará qual o mês com mais focos de incêndios na média?
+
+
+A partir dos gráficos observa=se que historicamente no Pará o mês com mas focos de incêndios é Julho.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_plot4 <- fire_data_broad |> 
+  filter(name_state == "Para") |> 
+  with_groups(c(fire_month) ,
+              summarise,
+              fire_number = sum(fire_number),
+              name_state = name_state) |>
+  mutate(fire_month = reorder(fire_month, -fire_number)) |> 
+  unique()
+
+
+plot6 <- ggplot(data = data_plot4, mapping = aes(fire_number, fire_month)) +
+  geom_col(aes(color = fire_number, fill = fire_number), width = 0.8)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  labs(
+    title = "Quantidade de focos de incêndios no Pará de 1998 a 2017",
+    y = "states",
+    x = "Número de focos de incêndios",
+    color = "Focos de incêndios",
+    fill = "Focos de incêndios"
+  )+
+  theme(
+    legend.position = c(0.86, 0.86)
+  )+
+  theme(
+    legend.position = "none"
+  )
+
+
+plotly::ggplotly(plot6, width = 900, height = 600)
+
+
+
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Para <- states |> 
+  filter(name_state == "Para")
+
+
+plot7 <- data_plot4 |>
+  left_join(states, by = ("name_state")) |> 
+  st_as_sf() |> 
+  ggplot() +
+  geom_sf(data = Para) +
+  geom_sf(mapping = aes(fill = fire_number), color = "black", show.legend = TRUE) + 
+  #caso queira a sigla de cada estado, descomente a proxima linha
+  geom_sf_text(mapping = aes(label = abbrev_state), colour = "black")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  facet_wrap("fire_month")+ # Caso queira separar por fire_year descomentar essa linha
+  labs(title = "Quantidade de focos de incêndios no Pará de 1998 a 2017",
+       fill ="Focos de incêndios")+
+  theme(
+    axis.text.x = element_blank(),
+    legend.position = c(0.86, 0.16),
+    axis.text.y = element_blank()
+  )
+
+plotly::ggplotly(plot7, width = 900, height = 600)
+
+
+```
+
+
+5.  No ano de 2010, qual foi o estado com mais focos de incêndios no Brasil?
+
+No ano de 2010 o estado com mais focos foi Mato grosso com 3.758 focos de incêndios.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+data_plot5 <- fire_data_broad |> 
+  filter(fire_year == 2010) |> 
+  with_groups(c(name_state) , summarise, fire_number = sum(fire_number)) |>
+  mutate(name_state = reorder(name_state, -fire_number)) |> 
+  unique()
+
+
+plot7 <- ggplot(data = data_plot5, mapping = aes(fire_number, name_state)) +
+  geom_col(aes(color = fire_number, fill = fire_number), width = 0.8)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  labs(
+    title = "Quantidade de focos de incêndios no Brasil ano de 2010",
+    subtitle = "de 1998 a 2017",
+    y = "states",
+    x = "Número de focos de incêndios",
+    color = "Focos de incêndios",
+    fill = "Focos de incêndios"
+  )+
+  theme(
+    legend.position = c(0.86, 0.86)
+  )+
+  theme(
+    legend.position = "none"
+  )
+
+
+plotly::ggplotly(plot7, width = 900, height = 600)
+
+
+
+```
+
+
+
+6.  No ano de 2010, qual o mês com menos focos de incêndios no estado do Pará?
+
+Em 2010, Dezembro, com somente 1 foco, foi o mês com menos focos de incêndios no Pará.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_plot6 <- fire_data_broad |> 
+  filter(fire_year == 2010 & name_state == "Para") |> 
+  with_groups(c(fire_month) ,
+              summarise,
+              fire_number = sum(fire_number),
+              name_state = name_state) |>
+  mutate(fire_month = reorder(fire_month, -fire_number)) |> 
+  unique()
+
+
+plot8 <- ggplot(data = data_plot6, mapping = aes(fire_number, fire_month)) +
+  geom_col(aes(color = fire_number, fill = fire_number), width = 0.8)+
+  scale_color_gradient(low = "yellow", high = "red")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  labs(
+    title = "Quantidade de focos de incêndios no Brasil ano de 2010",
+    subtitle = "de 1998 a 2017",
+    y = "states",
+    x = "Número de focos de incêndios",
+    color = "Focos de incêndios",
+    fill = "Focos de incêndios"
+  )+
+  theme(
+    legend.position = c(0.86, 0.86)
+  )+
+  theme(
+    legend.position = "none"
+  )
+
+
+plotly::ggplotly(plot8, width = 900, height = 600)
+
+
+```
+
+## Conclusão
+
+Neste projeto trabalhamos com dados oficiais do governo brasileiro sobre queimadas do ano de 1998 a 2017. Foi possível realizar gráficos interativos, para isso utilizamos os pacotes geobr, sf e plotly. Podemos ver que a partir de uma base de dados tratada ([Tidy data](https://cran.r-project.org/web/packages/tidyr/vignettes/tidy-data.html)) fomos capazes de extrair as informações necessárias dos dados. Como atividade complementar a este projeto confeccionei no Tableau uma Dashboard que pode ser acessada [aqui](https://public.tableau.com/app/profile/tales.gomes/viz/FocosdeincndiosnoBrasil1998a2017/FocosdeincndionoBrasil).
+
+

@@ -1,0 +1,416 @@
+---
+title: "Forest fire in Brazil"
+author: "Tales Gomes"
+format: 
+  html:
+    self-contained: false
+    code-fold: true
+    toc: true
+execute: 
+  cache: true
+jupyter: python3
+---
+
+## Forest Fire in Brazil
+
+In this projet I am going to analyze the data of Kaffles's dataset [Forest Fires in Brazil](https://www.kaggle.com/datasets/gustavomodelli/forest-fires-in-brazil){style="blue"}.
+
+## Importing the data
+
+We are work with two tables, one with the number of Fire hotspot and other with the rainfall precipitation.
+
+```{python}
+#| output: false
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+import seaborn as sns
+from datetime import datetime
+
+
+
+fire_df = pd.read_csv('data/amazon.csv', encoding = 'Latin-1')
+precitation_df = pd.read_csv('data/precipitation.csv')
+```
+
+## First Look at the data
+
+Befores the analysis first let take a look at the data struct to see if is possible to merge the datasets.
+
+### Fire hotspot database
+
+Taking a look at the first 5 rows.
+
+```{python}
+
+fire_df.head()
+
+```
+
+Column data types
+
+```{python}
+
+fire_df.dtypes
+
+```
+
+Dataset shape
+
+```{python}
+
+fire_df.shape
+
+```
+
+After look at the data we can observe that we will need some data transformation. First verify if the name of states are correct, than transform the date column to the apropriate type and after that we could standardize the Month and Year columns.
+
+### Rainfall precipitation database
+
+First five rows
+
+```{python}
+
+precitation_df.head()
+
+```
+
+Columns data types
+
+```{python}
+
+precitation_df.dtypes
+
+
+```
+
+Dataset shape
+
+```{python}
+
+precitation_df.shape
+
+```
+
+The state column is in a different format, we will have to standardize the values between the two tables. The date column also follows a different pattern, we will have to aggregate by month, year and state to be able to join the two tables.
+
+## Data Transformation
+
+### Fire hotspot database
+
+```{python}
+
+sorted(fire_df.month.unique())
+
+```
+
+
+
+```{python}
+# Dictionary with month translations
+month_map={'Janeiro': 1, 'Fevereiro': 2, 'Março': 3, 'Abril': 4, 'Maio': 5,
+          'Junho': 6, 'Julho': 7, 'Agosto': 8, 'Setembro': 9, 'Outubro': 10,
+          'Novembro': 11, 'Dezembro': 12}
+#mapping months
+fire_df['month']=fire_df['month'].map(month_map)
+```
+
+
+```{python}
+
+sorted(fire_df.month.unique())
+
+```
+
+
+
+First we will work with the state column, to standardize the values we will use a dictionary to map the correct values. fist let's see the unique state values.
+
+```{python}
+
+sorted(fire_df.state.unique())
+
+
+```
+
+Now we will use the dictionary to map the correct values
+
+```{python}
+
+# Dictionary with correct state name
+state_map={'Acre':'Acre',
+           'Alagoas':'Alagoas',
+           'Amapa':'Amapá',
+           'Amazonas':'Amazonas',
+           'Bahia':'Bahia',
+           'Ceara':'Ceará',
+           'Distrito Federal':'Distrito Federal',
+           'Espirito Santo':'Espírito Santo',
+           'Goias':'Goiás',
+           'Maranhao':'Maranhão',
+           'Mato Grosso':'Mato Grosso',
+           'Minas Gerais':'Minas Gerais',
+           'Paraiba':'Paraíba',
+           'Pará':'Pará',
+           'Pernambuco':'Pernambuco',
+           'Piau':'Piauí',
+           'Rio':'Rio de Janeiro',
+           'Rondonia': 'Rondônia',
+           'Roraima':'Roraima',
+           'Santa Catarina':'Santa Catarina',
+           'Sao Paulo':'São Paulo',
+           'Sergipe': 'Sergipe',
+           'Tocantins': 'Tocantins'
+           }
+
+#mapping state
+fire_df['state']=fire_df['state'].map(state_map)
+```
+
+With the corrected values let's plot to see how it turned out.
+
+```{python}
+
+sorted(fire_df.state.unique())
+
+```
+
+Now we will change the date column to the correct type. As the data has unique values for each set of state, month and year we will transform the column to date type, then extract the month and year and overwrite the corresponding columns.
+
+```{python}
+#| output: false
+
+# Delete date column from dataset
+fire_df.pop("date")
+
+fire_df['month'] = fire_df['month'].astype(str)
+fire_df['year'] = fire_df['year'].astype(str)
+
+# Change Order Coumns in dataset
+fire_df.insert(0, 'state', fire_df.pop('state'))
+```
+
+Let's check how it looks after the change
+
+```{python}
+
+fire_df.head()
+
+```
+
+### Rainfall precipitation Database
+
+For the rainfall precipitation database, we will use the same technique used in the previous table to standardize the values of the states. First we'll take a look to see the unique values of the states.
+
+```{python}
+
+precitation_df.state.unique()
+
+```
+
+Now we will use a dictionary to get the correct values in the state column
+
+```{python}
+states = {
+    'AC': 'Acre',
+    'AL': 'Alagoas',
+    'AP': 'Amapá',
+    'AM': 'Amazonas',
+    'BA': 'Bahia',
+    'CE': 'Ceará',
+    'DF': 'Distrito Federal',
+    'ES': 'Espírito Santo',
+    'GO': 'Goiás',
+    'MA': 'Maranhão',
+    'MT': 'Mato Grosso',
+    'MS': 'Mato Grosso do Sul',
+    'MG': 'Minas Gerais',
+    'PA': 'Pará',
+    'PB': 'Paraíba',
+    'PR': 'Paraná',
+    'PE': 'Pernambuco',
+    'PI': 'Piauí',
+    'RJ': 'Rio de Janeiro',
+    'RN': 'Rio Grande do Norte',
+    'RS': 'Rio Grande do Sul',
+    'RO': 'Rondônia',
+    'RR': 'Roraima',
+    'SC': 'Santa Catarina',
+    'SP': 'São Paulo',
+    'SE': 'Sergipe',
+    'TO': 'Tocantins'
+}
+
+#mapping our translated months
+precitation_df['state'] = precitation_df['state'].map(states)
+#checking the state column for the second time after the changes were made
+precitation_df.state.unique()
+
+
+```
+
+Then we will transform the date column to the correct type, extract the month and year and then group the precipitation values by state, month and year.
+
+```{python}
+#| output: false
+
+#Cast the date column to date type
+precitation_df['date'] = pd.to_datetime(pd.Series(precitation_df.date), format='%d/%m/%Y')
+
+# Create a Column with Year
+precitation_df['year'] =  pd.DatetimeIndex(precitation_df['date']).year
+precitation_df['year'] = precitation_df['year'].astype(str)
+# Create a Column with Month
+precitation_df['month'] =  pd.DatetimeIndex(precitation_df['date']).month
+precitation_df['month'] = precitation_df['month'].astype(str)
+
+
+# Delete date column from dataset
+precitation_df.pop("date")
+
+# Change Order Coumns in dataset
+precitation_df.insert(0, 'state', precitation_df.pop('state'))
+
+# Agregate Precipitation by state, year and month
+precitation_df = precitation_df.groupby(['state', 'year', 'month']).sum().reset_index()
+```
+
+let's check how the data was after the change
+
+```{python}
+
+precitation_df.head()
+
+```
+
+After having transformed the two tables, we can now perform the join of the databases in a single table.
+
+```{python}
+df = pd.merge(fire_df, precitation_df, how = "left", on=["state", "year", "month"])
+```
+
+Let's check the structure of our final table.
+
+```{python}
+df.head()
+```
+
+```{python}
+
+df.info()
+
+```
+
+```{python}
+df.isna().sum()
+
+```
+
+## EDA
+
+### Fire hotspot
+
+```{python}
+#| column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+sns.lineplot(x="year", y="number",
+            palette=["m", "g"],
+            data=df)
+sns.despine(offset=1, trim=True)
+```
+
+
+
+```{python}
+#| column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+ax = sns.lineplot(x="month", y="number",
+          palette=["m", "g"],
+            data=df)
+sns.despine(offset=1, trim=True)
+```
+
+
+
+```{python}
+#| fig-column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+ax = sns.boxplot(x="state", y="number",
+          palette=["m", "g"],
+            data=df)
+ax.set_title("Fire Hotspot by state")
+sns.despine(offset=10, trim=True)
+plt.xticks(rotation=45)
+plt.show()
+```
+
+
+### Rainfall precipitation
+
+
+
+```{python}
+#| label: fig-gapminder
+#| fig-cap: Life Expectancy and GDP
+#| fig-subcap:
+#|   - "Gapminder: 1957"
+#|   - "Gapminder: 2007"
+#| layout-ncol: 2
+#| column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+sns.lineplot(x="year", y="precipitation",
+            palette=["m", "g"],
+            data=df)
+sns.despine(offset=1, trim=True)
+
+
+plt.figure(figsize=(13,8))
+ax = sns.lineplot(x="month", y="precipitation",
+          palette=["m", "g"],
+            data=df)
+sns.despine(offset=1, trim=True)
+```
+
+
+
+```{python}
+#| column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+ax = sns.lineplot(x="month", y="precipitation",
+          palette=["m", "g"],
+            data=df)
+sns.despine(offset=1, trim=True)
+```
+
+
+
+```{python}
+#| fig-column: page
+#| fig-align: center
+plt.figure(figsize=(13,8))
+ax = sns.boxplot(x="state", y="precipitation",
+          palette=["m", "g"],
+            data=df)
+ax.set_title("Rainfall precipitation by state")
+sns.despine(offset=10, trim=True)
+plt.xticks(rotation=45)
+plt.show()
+```
+
+```{python}
+#| column: page
+#| fig-align: center
+import plotly.express as px
+import plotly.io as pio
+pio.renderers.default = "notebook+iframe"
+
+fig = px.box(df, x="precipitation",
+             y = "state", orientation='h')
+fig.show()
+
+```
