@@ -3,5 +3,8 @@
 .RData
 .Ruserdata
 kaggle/city-temperature/data/
+<<<<<<< HEAD
 ufo-sightings/data/nuforc_reports.csv 
 indian-liver-patient-records/dados/indian_liver_patient.csv
+=======
+>>>>>>> c4105deb878effc5806e543b9632c0ab12a802cd
